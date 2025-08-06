@@ -2,7 +2,7 @@
   {
     "kernelSource": {
       "name": "MiA3",
-      "repo": "https://github.com/kcprajeesh/android_kernel_laurel_sprout",
+      "repo": "https://github.com/kcprajeesh/android_kernel_laurel_sprout_18.1",
       "branch": "lineage-18.1",
       "device": "laurel_sprout"
     },
