@@ -6,11 +6,11 @@
       "branch": "lineage-18.1",
       "device": "laurel_sprout"
     },
-    "defconfig": "laurel_sprout_defconfig",
+    "defconfig": "nethunter_defconfig",
     "withKernelSU": false,
     "toolchains": [
       {
-        "name": "aosp-clang",
+        "name": "proton-clang",
         "repo": "https://github.com/kdrag0n/proton-clang.git",
         "branch": "master"
       }
