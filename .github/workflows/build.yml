@@ -52,20 +52,28 @@ jobs:
             gcc-aarch64-linux-gnu \
             gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi \
             gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf \
-            libssl-dev lftp zstd wget libfl-dev python3 python-is-python3 \
+            libssl-dev lftp zstd wget libfl-dev python-is-python3 \
             libarchive-tools jq ccache flex bison clang lzop liblz4-tool
 
-      - name: "🐍 Install Python 2 (for dtbo.img)"
+      - name: "🐍 Install Python 2 (from source)"
         run: |
-          sudo apt-get install -y python2 || sudo apt install -y python-minimal
-          sudo ln -sf /usr/bin/python2 /usr/bin/python
+          sudo apt-get install -y wget build-essential zlib1g-dev libncurses5-dev \
+            libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev
+          wget https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tgz
+          tar -xf Python-2.7.18.tgz
+          cd Python-2.7.18
+          ./configure --prefix=/usr/local
+          make -j$(nproc)
+          sudo make install
+          sudo ln -sf /usr/local/bin/python2.7 /usr/bin/python2
+          sudo ln -sf /usr/local/bin/python2.7 /usr/bin/python
 
       - name: "🌱 Clone kernel source"
         working-directory: ./${{ env.kernelDir }}
         run: |
           git clone --recursive --branch $kernelBranch $kernelRepo $kernelName --depth=1
 
-      - name: "💡 Patch defconfig (disable 32-bit vDSO)"
+      - name: "💡 Patch defconfig to disable 32-bit vDSO"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         run: |
           sed -i '/CONFIG_COMPAT_VDSO/d' arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
@@ -126,13 +134,7 @@ jobs:
       - name: "🔨 Build kernel"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         run: |
-          echo "🧱 Building kernel with args: ${{ steps.generate-args.outputs.args }}"
-          make ${{ steps.generate-args.outputs.args }} Image.gz-dtb || {
-            echo "⚠️ Failed to build Image.gz-dtb, falling back to just Image"
-            make ${{ steps.generate-args.outputs.args }}
-          }
-          echo "📦 Building dtbo.img (optional)"
-          make ${{ steps.generate-args.outputs.args }} dtbo.img || echo "⚠️ dtbo.img build failed. Skipping..."
+          make ${{ steps.generate-args.outputs.args }}
 
       - name: "📤 Upload Image"
         uses: actions/upload-artifact@v4
@@ -150,14 +152,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: "📤 Upload Image.gz-dtb"
-        uses: actions/upload-artifact@v4
-        with:
-          name: Image.gz-dtb-${{ env.kernelDevice }}-${{ env.kernelName }}-${{ env.kernelBranch }}
-          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb
-          if-no-files-found: ignore
-          retention-days: 7
-
       - name: "📤 Upload dtb"
         uses: actions/upload-artifact@v4
         with:
@@ -172,4 +166,4 @@ jobs:
           name: dtbo-${{ env.kernelDevice }}-${{ env.kernelName }}-${{ env.kernelBranch }}
           path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
           if-no-files-found: ignore
-          retention-days: 7 
+          retention-days: 7
