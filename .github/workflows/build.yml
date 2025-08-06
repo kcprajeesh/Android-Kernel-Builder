@@ -55,17 +55,21 @@ jobs:
             libssl-dev lftp zstd wget libfl-dev python3 python-is-python3 \
             libarchive-tools jq ccache flex bison clang lzop liblz4-tool
 
+      - name: "🐍 Install Python 2 (for dtbo.img)"
+        run: |
+          sudo apt-get install -y python2 || sudo apt install -y python-minimal
+          sudo ln -sf /usr/bin/python2 /usr/bin/python
+
       - name: "🌱 Clone kernel source"
         working-directory: ./${{ env.kernelDir }}
         run: |
           git clone --recursive --branch $kernelBranch $kernelRepo $kernelName --depth=1
 
-      - name: "💡 Patch defconfig"
+      - name: "💡 Patch defconfig (disable 32-bit vDSO)"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         run: |
+          sed -i '/CONFIG_COMPAT_VDSO/d' arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
           echo "CONFIG_COMPAT_VDSO=n" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
-          echo "CONFIG_KERNEL_BUILD_IMAGE_GZ=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
-          echo "CONFIG_BUILD_ARM64_DT_OVERLAY=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
 
       - name: "🛠️ Get toolchains"
         working-directory: ./${{ env.kernelDir }}
@@ -96,59 +100,76 @@ jobs:
           AR=$(echo $params | jq -r ".AR")
           CC=$(echo $params | jq -r ".CC")
           echo "CROSS32CC=arm-linux-gnueabi-gcc" >> $GITHUB_ENV
+
           echo "ARCH=$ARCH" >> $GITHUB_ENV
 
           args="-j$(nproc)"
-          [ -n "${{ env.OUT_DIR }}" ] && mkdir -p $(pwd)/${{ env.OUT_DIR }} && args="$args O=$(pwd)/${{ env.OUT_DIR }}"
-          [ -n "$ARCH" ] && args="$args ARCH=$ARCH"
-          [ -n "$CROSS_COMPILE" ] && args="$args CROSS_COMPILE=$CROSS_COMPILE"
-          [ -n "$CLANG_TRIPLE" ] && args="$args CLANG_TRIPLE=$CLANG_TRIPLE"
-          [ -n "$CROSS_COMPILE_COMPAT" ] && args="$args CROSS_COMPILE_ARM32=$CROSS_COMPILE_COMPAT"
-          [ -n "$AR" ] && args="$args AR=$AR"
-          [ -n "$CC" ] && args="$args CC=$CC"
+          if [ -n "${{ env.OUT_DIR }}" ]; then
+            mkdir -p $(pwd)/${{ env.OUT_DIR }}
+            args="$args O=$(pwd)/${{ env.OUT_DIR }}"
+          fi
+          if [ -n "$ARCH" ]; then args="$args ARCH=$ARCH"; fi
+          if [ -n "$CROSS_COMPILE" ]; then args="$args CROSS_COMPILE=$CROSS_COMPILE"; fi
+          if [ -n "$CLANG_TRIPLE" ]; then args="$args CLANG_TRIPLE=$CLANG_TRIPLE"; fi
+          if [ -n "$CROSS_COMPILE_COMPAT" ]; then args="$args CROSS_COMPILE_ARM32=$CROSS_COMPILE_COMPAT"; fi
+          if [ -n "$AR" ]; then args="$args AR=$AR"; fi
+          if [ -n "$CC" ]; then args="$args CC=$CC"; fi
           args="$args CROSS32CC=arm-linux-gnueabi-gcc"
 
           echo "args=$args" >> $GITHUB_OUTPUT
 
       - name: "⚙️ Make defconfig"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        run: make ${{ steps.generate-args.outputs.args }} ${{ env.DEFCONFIG_NAME }}
+        run: |
+          make ${{ steps.generate-args.outputs.args }} ${{ env.DEFCONFIG_NAME }}
 
       - name: "🔨 Build kernel"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        run: make ${{ steps.generate-args.outputs.args }} Image.gz-dtb dtbo.img || make ${{ steps.generate-args.outputs.args }}
-
-      - name: "📂 Debug: List output files"
         run: |
-          ls -lhR ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/
+          echo "🧱 Building kernel with args: ${{ steps.generate-args.outputs.args }}"
+          make ${{ steps.generate-args.outputs.args }} Image.gz-dtb || {
+            echo "⚠️ Failed to build Image.gz-dtb, falling back to just Image"
+            make ${{ steps.generate-args.outputs.args }}
+          }
+          echo "📦 Building dtbo.img (optional)"
+          make ${{ steps.generate-args.outputs.args }} dtbo.img || echo "⚠️ dtbo.img build failed. Skipping..."
 
-      - name: "📦 Package with AnyKernel3"
-        working-directory: ./${{ env.kernelDir }}
-        run: |
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3
-          cp ./${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb AnyKernel3/zImage || cp ./${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz AnyKernel3/zImage
-          cd AnyKernel3
-          zip -r9 ../kernel-${{ env.kernelDevice }}.zip * -x .git README.md
+      - name: "📤 Upload Image"
+        uses: actions/upload-artifact@v4
+        with:
+          name: Image-${{ env.kernelDevice }}-${{ env.kernelName }}-${{ env.kernelBranch }}
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: "📤 Upload Image.gz"
+        uses: actions/upload-artifact@v4
+        with:
+          name: Image.gz-${{ env.kernelDevice }}-${{ env.kernelName }}-${{ env.kernelBranch }}
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: "📤 Upload Image.gz-dtb"
         uses: actions/upload-artifact@v4
         with:
-          name: Image.gz-dtb-${{ env.kernelDevice }}
+          name: Image.gz-dtb-${{ env.kernelDevice }}-${{ env.kernelName }}-${{ env.kernelBranch }}
           path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: "📤 Upload dtb"
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtb-${{ env.kernelDevice }}-${{ env.kernelName }}-${{ env.kernelBranch }}
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtb
           if-no-files-found: ignore
           retention-days: 7
 
       - name: "📤 Upload dtbo.img"
         uses: actions/upload-artifact@v4
         with:
-          name: dtbo-${{ env.kernelDevice }}
+          name: dtbo-${{ env.kernelDevice }}-${{ env.kernelName }}-${{ env.kernelBranch }}
           path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
           if-no-files-found: ignore
-          retention-days: 7
-
-      - name: "📤 Upload flashable zip"
-        uses: actions/upload-artifact@v4
-        with:
-          name: Flashable-${{ env.kernelDevice }}
-          path: ./${{ env.kernelDir }}/kernel-${{ env.kernelDevice }}.zip
-          retention-days: 7
+          retention-days: 7 
