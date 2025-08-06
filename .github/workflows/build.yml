@@ -67,6 +67,12 @@ jobs:
         run: |
           git clone --recursive --branch $kernelBranch $kernelRepo $kernelName --depth=1
 
+      - name: "💡 Patch defconfig to disable 32-bit vDSO"
+        working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
+        run: |
+          sed -i '/CONFIG_COMPAT_VDSO/d' arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
+          echo "CONFIG_COMPAT_VDSO=n" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
+
       - name: "🛠️ Get toolchains"
         working-directory: ./${{ env.kernelDir }}
         env:
@@ -95,7 +101,6 @@ jobs:
           CLANG_TRIPLE=$(echo $params | jq -r ".CLANG_TRIPLE")
           AR=$(echo $params | jq -r ".AR")
           CC=$(echo $params | jq -r ".CC")
-          # Force the 32-bit compiler for compat (fixes vdso32 error)
           echo "CROSS32CC=arm-linux-gnueabi-gcc" >> $GITHUB_ENV
 
           echo "ARCH=$ARCH" >> $GITHUB_ENV
