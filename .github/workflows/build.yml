@@ -49,12 +49,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bc curl git zip ftp \
-           gcc-aarch64-linux-gnu \
-           gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi \
-           gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf \
-           libssl-dev lftp zstd wget libfl-dev python3 python-is-python3 \
-           libarchive-tools jq ccache flex bison clang lzop liblz4-tool
-      
+            gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi \
+            gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf \
+            libssl-dev lftp zstd wget libfl-dev python3 python-is-python3 \
+            libarchive-tools jq ccache flex bison clang lzop liblz4-tool
+
+      - name: "🔍 Check ARM toolchain presence"
+        run: |
+          which arm-linux-gnueabi-gcc || echo "Not found: arm-linux-gnueabi-gcc"
+          which arm-linux-gnueabi-ld || echo "Not found: arm-linux-gnueabi-ld"
+          which arm-linux-gnueabihf-gcc || echo "Not found: arm-linux-gnueabihf-gcc"
+          which arm-linux-gnueabihf-ld || echo "Not found: arm-linux-gnueabihf-ld"
 
       - name: "🌱 Clone kernel source"
         working-directory: ./${{ env.kernelDir }}
@@ -89,6 +95,8 @@ jobs:
           CLANG_TRIPLE=$(echo $params | jq -r ".CLANG_TRIPLE")
           AR=$(echo $params | jq -r ".AR")
           CC=$(echo $params | jq -r ".CC")
+          # Force the 32-bit compiler for compat (fixes vdso32 error)
+          echo "CROSS32CC=arm-linux-gnueabi-gcc" >> $GITHUB_ENV
 
           echo "ARCH=$ARCH" >> $GITHUB_ENV
 
@@ -103,6 +111,7 @@ jobs:
           if [ -n "$CROSS_COMPILE_COMPAT" ]; then args="$args CROSS_COMPILE_ARM32=$CROSS_COMPILE_COMPAT"; fi
           if [ -n "$AR" ]; then args="$args AR=$AR"; fi
           if [ -n "$CC" ]; then args="$args CC=$CC"; fi
+          args="$args CROSS32CC=arm-linux-gnueabi-gcc"
 
           echo "args=$args" >> $GITHUB_OUTPUT
 
@@ -147,3 +156,4 @@ jobs:
           path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
           if-no-files-found: ignore
           retention-days: 7
+          
