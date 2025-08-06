@@ -6,27 +6,21 @@
       "branch": "lineage-18.1",
       "device": "laurel_sprout"
     },
-    "defconfig": "nethunter_defconfig",
+    "defconfig": "laurel_sprout_defconfig",
     "withKernelSU": false,
     "toolchains": [
       {
-        "repo": "https://android.googlesource.com/platform/prebuilts/gas/linux-x86",
-        "branch": "master",
-        "name": "gas"
-      },
-      {
-        "repo": "https://gitlab.com/ThankYouMario/android_prebuilts_clang-standalone/",
-        "branch": "11",
-        "name": "clang"
+        "name": "aosp-clang",
+        "repo": "https://github.com/kdrag0n/proton-clang.git",
+        "branch": "master"
       }
     ],
     "params": {
       "ARCH": "arm64",
       "CROSS_COMPILE": "aarch64-linux-gnu-",
-      "CROSS_COMPILE_ARM32": "arm-linux-gnueabi-",
       "CROSS_COMPILE_COMPAT": "arm-linux-gnueabi-",
       "CLANG_TRIPLE": "aarch64-linux-gnu-",
-      "AR": "",
+      "AR": "llvm-ar",
       "CC": "clang"
     }
   }
