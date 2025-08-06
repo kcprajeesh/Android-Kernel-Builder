@@ -1,11 +1,13 @@
-[  {
+[
+  {
     "kernelSource": {
-      "name": "miku-KernelSU",
-      "repo": "https://github.com/PhamtomK12/kernel_xiaomi_odin",
-      "branch": "TDA",
-      "device": "odin"
+      "name": "MiA3",
+      "repo": "https://github.com/yesimxev/android_kernel_laurel_sprout",
+      "branch": "lineage-18.1",
+      "device": "laurel_sprout"
     },
-    "withKernelSU": true,
+    "defconfig": "nethunter_defconfig",
+    "withKernelSU": false,
     "toolchains": [
       {
         "repo": "https://android.googlesource.com/platform/prebuilts/gas/linux-x86",
