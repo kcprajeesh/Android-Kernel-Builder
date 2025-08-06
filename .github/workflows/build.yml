@@ -40,6 +40,7 @@ jobs:
       kernelBranch: ${{ matrix.repos.kernelSource.branch }}
       kernelDevice: ${{ matrix.repos.kernelSource.device }}
       DEFCONFIG_NAME: ${{ matrix.repos.defconfig }}
+      withKernelSU: ${{ matrix.repos.withKernelSU }}
     steps:
       - name: "📁 Create working dir"
         run: mkdir -p $kernelDir
@@ -56,12 +57,12 @@ jobs:
 
       - name: "🌱 Clone kernel source"
         working-directory: ./${{ env.kernelDir }}
-        run: git clone --recursive --branch $kernelBranch $kernelRepo $kernelName --depth=1
+        run: |
+          git clone --recursive --branch $kernelBranch $kernelRepo $kernelName --depth=1
 
-      - name: "🧩 Patch defconfig"
+      - name: "💡 Patch defconfig"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
         run: |
-          sed -i '/CONFIG_COMPAT_VDSO/d' arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
           echo "CONFIG_COMPAT_VDSO=n" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
           echo "CONFIG_KERNEL_BUILD_IMAGE_GZ=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
           echo "CONFIG_BUILD_ARM64_DT_OVERLAY=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
@@ -94,7 +95,6 @@ jobs:
           CLANG_TRIPLE=$(echo $params | jq -r ".CLANG_TRIPLE")
           AR=$(echo $params | jq -r ".AR")
           CC=$(echo $params | jq -r ".CC")
-
           echo "CROSS32CC=arm-linux-gnueabi-gcc" >> $GITHUB_ENV
           echo "ARCH=$ARCH" >> $GITHUB_ENV
 
@@ -116,28 +116,19 @@ jobs:
 
       - name: "🔨 Build kernel"
         working-directory: ./${{ env.kernelDir }}/${{ env.kernelName }}
-        run: make ${{ steps.generate-args.outputs.args }}
+        run: make ${{ steps.generate-args.outputs.args }} Image.gz-dtb dtbo.img || make ${{ steps.generate-args.outputs.args }}
 
-      - name: "📂 Check output files"
+      - name: "📂 Debug: List output files"
         run: |
-          echo "Boot folder:"
-          ls -lh ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/
-
-      - name: "❌ Fail if Image.gz-dtb missing"
-        run: |
-          FILE="./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb"
-          if [ ! -f "$FILE" ]; then
-            echo "❌ Image.gz-dtb not found!"
-            exit 1
-          fi
+          ls -lhR ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/
 
       - name: "📦 Package with AnyKernel3"
         working-directory: ./${{ env.kernelDir }}
         run: |
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3
-          cp ./${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb AnyKernel3/zImage
+          cp ./${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb AnyKernel3/zImage || cp ./${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz AnyKernel3/zImage
           cd AnyKernel3
-          zip -r9 ../${{ env.kernelName }}-${{ env.kernelBranch }}-${{ env.kernelDevice }}.zip * -x .git README.md
+          zip -r9 ../kernel-${{ env.kernelDevice }}.zip * -x .git README.md
 
       - name: "📤 Upload Image.gz-dtb"
         uses: actions/upload-artifact@v4
@@ -147,10 +138,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: "📤 Upload Flashable Zip"
+      - name: "📤 Upload dtbo.img"
         uses: actions/upload-artifact@v4
         with:
-          name: Flashable-Zip-${{ env.kernelDevice }}
-          path: ./${{ env.kernelDir }}/${{ env.kernelName }}-${{ env.kernelBranch }}-${{ env.kernelDevice }}.zip
+          name: dtbo-${{ env.kernelDevice }}
+          path: ./${{ env.kernelDir }}/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
           if-no-files-found: ignore
+          retention-days: 7
+
+      - name: "📤 Upload flashable zip"
+        uses: actions/upload-artifact@v4
+        with:
+          name: Flashable-${{ env.kernelDevice }}
+          path: ./${{ env.kernelDir }}/kernel-${{ env.kernelDevice }}.zip
           retention-days: 7
